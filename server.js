@@ -1,45 +1,59 @@
 const express = require('express');
-const multer  = require('multer');
-const path = require('path');
-const fs = require('fs');
+const multer = require('multer');
+const multerS3 = require('multer-s3');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const app = express();
-// Use Render's assigned port, or 3000 for local testing
 const port = process.env.PORT || 3000;
 
-// Set up storage
-const upload = multer({ dest: 'uploads/' });
+// 1. Connect to your Cloud Datastore (S3 or Cloudflare R2)
+const s3 = new S3Client({
+    region: process.env.AWS_REGION || 'auto', 
+    endpoint: process.env.S3_ENDPOINT,        
+    credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY,
+        secretAccessKey: process.env.S3_SECRET_KEY,
+    }
+});
 
-// Create the uploads folder if it doesn't exist when the server boots
-if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads');
-}
+// 2. Configure Multer to upload straight to the Cloud
+const upload = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: process.env.S3_BUCKET_NAME,
+        key: function (req, file, cb) {
+            // Keeps exact original name, adds timestamp to prevent overwriting
+            const exactFileName = Date.now() + '-' + file.originalname;
+            cb(null, exactFileName);
+        }
+    })
+});
 
-// 1. Homepage with the upload form
+// 3. Homepage
 app.get('/', (req, res) => {
     res.send(`
         <div style="font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
-            <h2>Simple File Sharer</h2>
+            <h2>Cloud-Powered File Sharer</h2>
             <form action="/upload" method="POST" enctype="multipart/form-data" style="margin-bottom: 20px;">
                 <input type="file" name="myFile" required style="display: block; margin-bottom: 15px;" />
-                <button type="submit" style="padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Upload and Get Link</button>
+                <button type="submit" style="padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Upload to Cloud</button>
             </form>
-            <p style="color: #666; font-size: 0.9em;"><em>Note: Render uses ephemeral storage. Uploaded files will vanish when the server sleeps or restarts!</em></p>
+            <p style="color: #28a745; font-size: 0.9em;"><em>Files are now permanently stored in the cloud!</em></p>
         </div>
     `);
 });
 
-// 2. Handle the upload and generate the link
+// 4. Handle Upload
 app.post('/upload', upload.single('myFile'), (req, res) => {
     if (!req.file) return res.send('Upload failed.');
     
-    // Dynamically build the URL so it works on localhost AND your live Render domain
-    const downloadLink = `${req.protocol}://${req.get('host')}/download/${req.file.filename}`;
+    // Generate the shareable link using the live Render domain
+    const downloadLink = `${req.protocol}://${req.get('host')}/download/${encodeURIComponent(req.file.key)}`;
     
     res.send(`
         <div style="font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; text-align: center;">
             <h3 style="color: #28a745;">Upload Successful!</h3>
-            <p>Here is your shareable, instant-download link:</p>
+            <p>Direct download link (Permanent):</p>
             <input type="text" value="${downloadLink}" readonly style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;" />
             <br>
             <a href="${downloadLink}" style="display: inline-block; margin-top: 10px; text-decoration: none; color: #007bff;">Test Download</a>
@@ -49,20 +63,35 @@ app.post('/upload', upload.single('myFile'), (req, res) => {
     `);
 });
 
-// 3. The Instant Download Route
-app.get('/download/:fileId', (req, res) => {
-    const fileId = req.params.fileId;
-    const filePath = path.join(__dirname, 'uploads', fileId);
+// 5. The Instant Download Route
+app.get('/download/:fileKey', async (req, res) => {
+    try {
+        const fileKey = req.params.fileKey;
+        
+        // Grab the exact file from the cloud bucket
+        const command = new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET_NAME,
+            Key: fileKey
+        });
+        
+        const response = await s3.send(command);
 
-    // Check if file exists on the server
-    if (fs.existsSync(filePath)) {
-        // Force instant download
-        res.download(filePath, 'shared_file_download'); 
-    } else {
-        res.status(404).send('<h2>404</h2><p>File not found. It may have expired or the server restarted.</p>');
+        // Strip the timestamp we added earlier so the user downloads the EXACT original filename
+        const originalFileName = fileKey.split('-').slice(1).join('-');
+
+        // Force the browser to download it instantly
+        res.setHeader('Content-Disposition', \`attachment; filename="\${originalFileName}"\`);
+        res.setHeader('Content-Type', response.ContentType);
+
+        // Pipe the file data directly to the user's browser
+        response.Body.pipe(res);
+
+    } catch (error) {
+        console.error(error);
+        res.status(404).send('<h2>404</h2><p>File not found in the cloud datastore.</p>');
     }
 });
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(\`Server running on port \${port}\`);
 });
