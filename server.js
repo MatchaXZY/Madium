@@ -34,15 +34,15 @@ app.post('/upload', upload.single('myFile'), (req, res) => {
     if (!req.file) return res.send('Upload failed.');
     
     // Dynamically build the URL so it works on localhost AND your live Render domain
-    const downloadLink = \`\${req.protocol}://\${req.get('host')}/download/\${req.file.filename}\`;
+    const downloadLink = `${req.protocol}://${req.get('host')}/download/${req.file.filename}`;
     
     res.send(`
         <div style="font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; text-align: center;">
             <h3 style="color: #28a745;">Upload Successful!</h3>
             <p>Here is your shareable, instant-download link:</p>
-            <input type="text" value="\${downloadLink}" readonly style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;" />
+            <input type="text" value="${downloadLink}" readonly style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;" />
             <br>
-            <a href="\${downloadLink}" style="display: inline-block; margin-top: 10px; text-decoration: none; color: #007bff;">Test Download</a>
+            <a href="${downloadLink}" style="display: inline-block; margin-top: 10px; text-decoration: none; color: #007bff;">Test Download</a>
             <br><br>
             <a href="/" style="text-decoration: none; color: #666; font-size: 0.9em;">Upload another file</a>
         </div>
@@ -64,5 +64,5 @@ app.get('/download/:fileId', (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(\`Server running on port \${port}\`);
+    console.log(`Server running on port ${port}`);
 });
