@@ -4,6 +4,7 @@ const multerS3 = require('multer-s3');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const app = express();
+// Use Render's assigned port, or 3000 if testing locally
 const port = process.env.PORT || 3000;
 
 // 1. Connect to your Cloud Datastore (S3 or Cloudflare R2)
@@ -22,14 +23,14 @@ const upload = multer({
         s3: s3,
         bucket: process.env.S3_BUCKET_NAME,
         key: function (req, file, cb) {
-            // Keeps exact original name, adds timestamp to prevent overwriting
+            // Keeps exact original name, adds a timestamp to prevent overwriting
             const exactFileName = Date.now() + '-' + file.originalname;
             cb(null, exactFileName);
         }
     })
 });
 
-// 3. Homepage
+// 3. Homepage with the upload form
 app.get('/', (req, res) => {
     res.send(`
         <div style="font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
@@ -43,11 +44,11 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 4. Handle Upload
+// 4. Handle Upload & Generate Link
 app.post('/upload', upload.single('myFile'), (req, res) => {
     if (!req.file) return res.send('Upload failed.');
     
-    // Generate the shareable link using the live Render domain
+    // Generate the shareable link using your live Render domain
     const downloadLink = `${req.protocol}://${req.get('host')}/download/${encodeURIComponent(req.file.key)}`;
     
     res.send(`
@@ -68,7 +69,7 @@ app.get('/download/:fileKey', async (req, res) => {
     try {
         const fileKey = req.params.fileKey;
         
-        // Grab the exact file from the cloud bucket
+        // Grab the exact file from your cloud bucket
         const command = new GetObjectCommand({
             Bucket: process.env.S3_BUCKET_NAME,
             Key: fileKey
@@ -76,11 +77,11 @@ app.get('/download/:fileKey', async (req, res) => {
         
         const response = await s3.send(command);
 
-        // Strip the timestamp we added earlier so the user downloads the EXACT original filename
+        // Strip the timestamp we added earlier to get the EXACT original filename
         const originalFileName = fileKey.split('-').slice(1).join('-');
 
-        // Force the browser to download it instantly (Fixed syntax here!)
-        res.setHeader('Content-Disposition', `attachment; filename="${originalFileName}"`);
+        // Force the browser to download it instantly with the correct original file name and extension
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(originalFileName)}`);
         res.setHeader('Content-Type', response.ContentType);
 
         // Pipe the file data directly to the user's browser
@@ -93,5 +94,5 @@ app.get('/download/:fileKey', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`); // Fixed syntax here too!
+    console.log(`Server running on port ${port}`);
 });
