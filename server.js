@@ -79,8 +79,8 @@ app.get('/download/:fileKey', async (req, res) => {
         // Strip the timestamp we added earlier so the user downloads the EXACT original filename
         const originalFileName = fileKey.split('-').slice(1).join('-');
 
-        // Force the browser to download it instantly
-        res.setHeader('Content-Disposition', \`attachment; filename="\${originalFileName}"\`);
+        // Force the browser to download it instantly (Fixed syntax here!)
+        res.setHeader('Content-Disposition', `attachment; filename="${originalFileName}"`);
         res.setHeader('Content-Type', response.ContentType);
 
         // Pipe the file data directly to the user's browser
@@ -93,5 +93,5 @@ app.get('/download/:fileKey', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(\`Server running on port \${port}\`);
+    console.log(`Server running on port ${port}`); // Fixed syntax here too!
 });
